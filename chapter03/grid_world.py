@@ -1,9 +1,11 @@
 """implementations of grid_world from chapter 3"""
 
+import time
+import random
 from typing import Tuple
 
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # pylint: disable=import-error
 
 DIMS = 5
 ACTIONS = [(0, -1), (-1, 0), (1, 0), (0, 1)]  # action tuples
@@ -29,6 +31,7 @@ def plot(grid: [np.ndarray], diff: int):
 
     labels = [i + 1 for i in range(DIMS)]
     axs[0].table(cellText=text, colLabels=labels, rowLabels=labels, loc='center')
+    axs[1].set_xlabel('v_pi iteration differences')
     axs[1].plot(diff)
 
     plt.show()
@@ -52,7 +55,7 @@ def step(state: Tuple[int, int], action: Tuple[int, int]) -> (Tuple[int, int], i
 
 
 def fig_3_2():
-    """implementation of the state value function in figure 3.2 of the book"""
+    """implementation of the state value function (v_pi(s)) in figure 3.2 of the book. Same probability for each action"""
 
     grid = np.zeros((DIMS, DIMS))
     diffs = list()
@@ -74,5 +77,37 @@ def fig_3_2():
         grid = new_grid
 
 
+def fig_3_5():
+    """implementation of the state value function (v_pi(s)) in figure 3.2 of the book. Always takes greedy action"""
+
+    grid = np.zeros((DIMS, DIMS))
+    diffs = list()
+    while True:
+
+        new_grid = np.zeros(grid.shape)  # all updates happen simultaneously
+        for i in range(DIMS):
+            for j in range(DIMS):
+                best = float("-inf")
+                random.shuffle(ACTIONS)  # ensure random choice of equivalued actions
+
+                for action in ACTIONS:  # find the greedy action
+                    (x, y), reward = step((i, j), action)
+                    value = reward + DISCOUNT * grid[x, y]
+                    if value > best:
+                        best = value
+
+                new_grid[i, j] += best
+
+        diffs.append(np.sum(np.abs(grid - new_grid)))
+
+        if diffs[-1] < EPSILON:
+            plot(new_grid, diffs)
+            break
+
+        grid = new_grid
+
+
 if __name__ == "__main__":
+
     fig_3_2()
+    fig_3_5()
