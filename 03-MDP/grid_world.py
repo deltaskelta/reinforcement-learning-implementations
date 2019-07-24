@@ -1,11 +1,12 @@
 """implementations of grid_world from chapter 3"""
 
-import time
 import random
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
-import matplotlib.pyplot as plt  # pylint: disable=import-error
+from matplotlib import animation, rc, pyplot as plt
+
+rc('animation', html='html5')
 
 DIMS = 5
 ACTIONS = [(0, -1), (-1, 0), (1, 0), (0, 1)]  # action tuples
@@ -19,22 +20,38 @@ B = (0, 3)
 A_PRIME = (4, 1)
 B_PRIME = (2, 3)
 
+#def plot(grid: [np.ndarray], diff: int):
+#    """plot the current grid and the differences between iterations"""
+#    text = []
+#    for v in grid:
+#        text.append(['{:1.1f}'.format(n) for n in v])
+#
+#    _, axs = plt.subplots(2, 1)
+#    axs[0].axis('off')
+#
+#    labels = [i + 1 for i in range(DIMS)]
+#    axs[0].table(cellText=text, colLabels=labels, rowLabels=labels, loc='center')
+#    axs[1].set_xlabel('v_pi iteration differences')
+#    axs[1].plot(diff)
+#
+#    plt.show()
 
-def plot(grid: [np.ndarray], diff: int):
-    """plot the current grid and the differences between iterations"""
-    text = []
+fig, axs = plt.subplots(2, 1)
+
+
+def plot(grid: np.ndarray, diff: List[int]) -> 'matplotlib.image.AxesImage':
+    """makes an image of the current state"""
+
+    text = list()
     for v in grid:
-        text.append(['{:1.1f}'.format(n) for n in v])
+        text.append([['{:1.1f}'.format(i) for i in v]])
 
-    _, axs = plt.subplots(2, 1)
     axs[0].axis('off')
-
-    labels = [i + 1 for i in range(DIMS)]
-    axs[0].table(cellText=text, colLabels=labels, rowLabels=labels, loc='center')
+    axs[0].table(cellText=text, loc='center')
     axs[1].set_xlabel('v_pi iteration differences')
     axs[1].plot(diff)
 
-    plt.show()
+    return plt.imshow(axs)
 
 
 def step(state: Tuple[int, int], action: Tuple[int, int]) -> (Tuple[int, int], int):
@@ -54,10 +71,11 @@ def step(state: Tuple[int, int], action: Tuple[int, int]) -> (Tuple[int, int], i
     return new_state, 0
 
 
-def fig_3_2():
+def fig_3_2() -> 'matplotlib.image.AxesImage':
     """implementation of the state value function (v_pi(s)) in figure 3.2 of the book. Same probability for each action"""
 
     grid = np.zeros((DIMS, DIMS))
+    images = list()
     diffs = list()
     while True:
 
@@ -69,15 +87,18 @@ def fig_3_2():
                     new_grid[i, j] += 0.25 * (reward + DISCOUNT * grid[next_i, next_j])
 
         diffs.append(np.sum(np.abs(grid - new_grid)))
+        images.append(plot(new_grid, diffs))
 
         if diffs[-1] < EPSILON:
-            plot(new_grid, diffs)
+            print("breaking")
+            print(grid, new_grid, diffs)
             break
 
         grid = new_grid
+    return images
 
 
-def fig_3_5():
+def fig_3_5() -> 'matplotlib.image.AxesImage':
     """implementation of the state value function (v_pi(s)) in figure 3.2 of the book. Always takes greedy action"""
 
     grid = np.zeros((DIMS, DIMS))
@@ -99,9 +120,7 @@ def fig_3_5():
                 new_grid[i, j] += best
 
         diffs.append(np.sum(np.abs(grid - new_grid)))
-
         if diffs[-1] < EPSILON:
-            plot(new_grid, diffs)
             break
 
         grid = new_grid
@@ -109,5 +128,10 @@ def fig_3_5():
 
 if __name__ == "__main__":
 
-    fig_3_2()
-    fig_3_5()
+    imgs = fig_3_2()
+    print("after return")
+    anim = animation.ArtistAnimation(fig, imgs, blit=True)
+    plt.show()
+    anim.save('../images/grid_world_3_5.gif', writer='imagemagick', fps=15)
+
+    #fig_3_5()
