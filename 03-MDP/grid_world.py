@@ -74,7 +74,7 @@ class GridWorld():
             i += 1
             yield i
 
-    def iterate_3_2(self, f) -> List[plt.Artist]:
+    def iterate_3_2(self, f: "animate index") -> List[plt.Artist]:
         """iterate to improve the policy value with equiprobable policy"""
 
         new_grid = np.zeros(self.grid.shape)  # all updates happen simultaneously
