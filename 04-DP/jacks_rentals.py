@@ -1,7 +1,10 @@
 """implementation of Jack's Car Rentla problem from chapter 4"""
 
+import math
 from typing import Tuple
 import numpy as np
+from matplotlib import animation, pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
 
 LOCATIONS = 2
 RENT_LAMBDA = (3, 4)
@@ -11,66 +14,48 @@ REWARD = 10
 MAX_CARS = 20
 MOVE_COST = 2
 DISCOUNT = 0.9
-EPSILON = 1e-18
+EPSILON = 1e-8
 DIMS = 21  # to cover 0-20 cars
+POISSON_LIMIT = 10
 
 np.set_printoptions(linewidth=140, precision=0)
+fig = plt.figure()
+hmap_axs = fig.add_subplot(2, 1, 1)
+hmap_axs.set_xlabel('Policy')
+value_axs = fig.add_subplot(2, 1, 2, projection='3d')
+value_axs.set_xlabel('State Values')
+
+# 2d xy arrays for the surface plot
+x = np.arange(DIMS)
+y = np.arange(DIMS)
+xs, ys = np.meshgrid(x, y)
 
 
-def is_valid_move(state: Tuple[int, int], m: int):
-    """check if the proposed move is valid (new states > 0 < 20)"""
-    if m == 0:
+def poisson(lambd: int, k: int) -> float:
+    """return the probability of k with parameter lambda in poisson distribution"""
+    return math.exp(-lambd) * (lambd**k / math.factorial(k))
+
+
+def valid_action(state: Tuple[int, int], action: int) -> bool:
+    """return if the action is valid given the current state"""
+    (i, j) = state
+    if action == 0:
         return True
-
-    state = return_cars(state)
-    state = debit_cars(state)
-    (i, j) = truncate_surplus(state)
-
-    if m < 0 and (i - m > 20 or j + m < 0):
+    if action < 0 and (i - action > 20 or j + action < 0):
         return False
-
-    if m > 0 and (i - m < 0 or j + m > 20):
+    if action > 0 and (i - action < 0 or j + action > 20):
         return False
-
     return True
 
 
-def debit_cars(state: Tuple[int, int]) -> Tuple[int, int]:
-    """debit the expected rented cars from the inventory"""
-    return tuple([max(0, v - RENT_LAMBDA[i]) for i, v in enumerate(state)])
+def apply_action(state: Tuple[int, int], action: int) -> Tuple[int, int]:
+    """apply an action to a state, truncating any cars above 20 (does not check validity)"""
+    return (min(MAX_CARS, int(state[0] - action)), min(MAX_CARS, int(state[1] + action)))
 
 
-def truncate_surplus(state: Tuple[int, int]) -> Tuple[int, int]:
-    """sends the surplus of cars back to the company HQ"""
-    return tuple([min(i, MAX_CARS) for i in state])
-
-
-def return_cars(state) -> Tuple[int, int]:
+def return_cars(state: Tuple[int, int]) -> Tuple[int, int]:
     """make yesterdays expected returns available, send surplus to HQ"""
-    return tuple([v + RETURN_LAMBDA[i] for i, v in enumerate(state)])
-
-
-def step(state: Tuple[int, int], action: int) -> (int, Tuple[int, int]):
-    """take one step forward in time, return reward, and next state"""
-
-    new_state = return_cars(state)
-
-    # new rental requests for today, rewards being earned
-    reward = 0
-    for i in range(LOCATIONS):
-        if new_state[i] < RENT_LAMBDA[i]:
-            reward += new_state[i] * REWARD
-        else:
-            reward += RENT_LAMBDA[i] * REWARD
-
-    # remove expected rented cars from inventory
-    new_state = debit_cars(new_state)
-    new_state = truncate_surplus(new_state)
-
-    # follow the given action and move cars around locations
-    new_state = (new_state[0] - action, new_state[1] + action)
-    reward -= abs(MOVE_COST * action)
-    return reward, tuple([int(i) for i in new_state])
+    return tuple([min(MAX_CARS, v + RETURN_LAMBDA[i]) for i, v in enumerate(state)])
 
 
 class Jacks():
@@ -80,38 +65,48 @@ class Jacks():
         self.cont = True
         self.policy = np.zeros((DIMS, DIMS))
         self.state_values = np.zeros((DIMS, DIMS))
+        self.i_poisson = [poisson(RENT_LAMBDA[0], i) for i in range(POISSON_LIMIT)]
+        self.j_poisson = [poisson(RENT_LAMBDA[1], j) for j in range(POISSON_LIMIT)]
+
+    def bellman(self, state: Tuple[int, int], action: int) -> float:
+        """calculate the expectation of the given state and action"""
+
+        # apply the action at the start of the day becuase we ended yesterday in this state and took the action
+        # TODO: why do we have to apply the action here and not at the end?
+        (i_post_action, j_post_action) = apply_action(state, action)
+        expected_reward = -MOVE_COST * abs(action)
+
+        for i in range(POISSON_LIMIT):
+            for j in range(POISSON_LIMIT):
+                i_state, j_state = i_post_action, j_post_action
+
+                i_can_rent, j_can_rent = min(i, i_state), min(j, j_state)
+                i_state -= i_can_rent
+                j_state -= j_can_rent
+
+                reward = 10 * (j_can_rent + i_can_rent)
+
+                p = self.i_poisson[i] * self.j_poisson[j]
+                (i_state, j_state) = return_cars((i_state, j_state))  # TODO: why do we have to return cars here and not at the beginning?
+                expected_reward += p * (reward + DISCOUNT * self.state_values[i_state, j_state])
+        return expected_reward
 
     def evaluate_policy(self):
         """evaluate policy, setting values for all states according to policy"""
 
         while True:
             delta = 0
-            state_values = np.zeros((DIMS, DIMS))
             for i in range(DIMS):
                 for j in range(DIMS):
                     # this starting state will have new cars become available, but the state value should
                     # reflect the value of the starting state and not the state after new cars are ready
                     v = self.state_values[i, j]
-                    print(f"state: {i} {j}, policy action: {self.policy[i, j]}")
-                    reward, next_state = step((i, j), self.policy[i, j])
+                    expectation = self.bellman((i, j), self.policy[i, j])
+                    self.state_values[i, j] = expectation
 
-                    value = reward + DISCOUNT * self.state_values[next_state]
-                    state_values[i, j] = value
-
-                    delta = max(delta, abs(v - value))
-            self.state_values = state_values
+                    delta = max(delta, abs(v - expectation))
             if delta < EPSILON:
                 return
-
-    def iterate_4_2(self, f):
-        """do an iteration of policy evaluations and policy improvement"""
-
-        while self.cont:
-            self.evaluate_policy()
-            self.cont = self.can_improve_policy()
-            print(f"policy:\n{self.state_values}")
-            print(f"value of 0, 0 cars: {self.state_values[0, 0]} value of 20, 20 cars: {self.state_values[20, 20]}")
-            print(f"policy:\n{self.policy}")
 
     def can_improve_policy(self):
         """go through the policy at each state and check whether different actions can improve it"""
@@ -123,27 +118,41 @@ class Jacks():
 
                 best_expectation = float("-inf")
                 best_action = float("-inf")
-                for n in ACTIONS:
-                    if not is_valid_move((i, j), n):
+                for action in ACTIONS:
+                    if not valid_action((i, j), action):
                         continue
 
-                    reward, new_state = step((i, j), n)  # expected reward for change in policy
-                    expectation = reward + DISCOUNT * self.state_values[new_state]
+                    expectation = self.bellman((i, j), action)
                     if expectation > best_expectation:
                         best_expectation = expectation
-                        best_action = n
+                        best_action = action
                 self.policy[i, j] = best_action
                 if self.policy[i, j] != old_action:
                     can_improve = True
 
         return can_improve
 
+    def plot(self) -> None:
+        """plot the updates"""
+        hmap_axs.imshow(self.policy, cmap='plasma', interpolation='nearest')
+        value_axs.cla()
+        value_axs.plot_surface(xs, ys, self.state_values)
+
+    def iterate_4_2(self, f: "animate index"):
+        """do an iteration of policy evaluations and policy improvement"""
+        self.plot()
+        self.evaluate_policy()
+        self.cont = self.can_improve_policy()
+
+    def loop_until_convergence(self) -> int:
+        """loops over the policy until convergence is reached"""
+        i = 0
+        while self.cont:
+            i += 1
+            yield i
+
 
 if __name__ == "__main__":
-    instance = Jacks()
-    instance.iterate_4_2(1)
-
-
-def p(i, j, string):
-    if i == 0:
-        print(string)
+    jacks = Jacks()
+    anim = animation.FuncAnimation(fig, jacks.iterate_4_2, frames=jacks.loop_until_convergence)
+    anim.save('./jacks_4_2.gif', writer='imagemagick')
