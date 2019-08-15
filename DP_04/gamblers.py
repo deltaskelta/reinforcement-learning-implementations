@@ -1,9 +1,10 @@
 """implementation of the Gamblers Problem using value iteration in Chapter 4"""
 
+from typing import Iterator
 from operator import add, sub
 from math import isclose
-import numpy as np
-from matplotlib import animation, pyplot as plt
+import numpy as np  # type: ignore
+from matplotlib import animation, pyplot as plt  # type: ignore
 
 GOAL = 101
 DIMS = 101
@@ -15,16 +16,12 @@ PROBS = [PROB_HEADS, 1 - PROB_HEADS]
 EPSILON = 1e-4
 
 np.set_printoptions(linewidth=140, precision=4)
-
-fig = plt.figure()
-value_axs = fig.add_subplot(2, 1, 1)
-policy_axs = fig.add_subplot(2, 1, 2)
+fig, [value_axs, policy_axs] = plt.subplots(nrows=2, ncols=1)
 
 
 class Gamblers():
     """implementation of example 4.2"""
-
-    def __init__(self):
+    def __init__(self) -> None:
         self.cont = True
         self.policy = np.zeros(DIMS)
         self.state_values = np.zeros(DIMS)
@@ -36,7 +33,7 @@ class Gamblers():
         if state == 0 or action == 0:
             return 0  # we can't win anything with 0 money or 0 wager
 
-        expected_reward = 0
+        expected_reward = 0.0
         for i, op in enumerate(OPS):
             s_prime = op(state, action)
             if s_prime >= 100:
@@ -48,12 +45,12 @@ class Gamblers():
 
         return expected_reward
 
-    def value_iteration(self):
+    def value_iteration(self) -> bool:
         """evaluate policy, setting values for all states according to policy"""
         delta = 0
         for state in range(DIMS):
             v = self.state_values[state]
-            max_return, max_index = 0, 0  # all returns should [0,1)
+            max_return, max_index = 0.0, 0  # all returns should [0,1)
             for action in range(state + 1):
                 r = self.bellman(state, action)
                 if isclose(r, max_return, rel_tol=1e-8) and action > max_index:
@@ -69,8 +66,8 @@ class Gamblers():
             return False
         return True
 
-    def plot(self, f: "animate index") -> None:
-        """plot the updates"""
+    def plot(self, f: int) -> None:
+        """plot the updates. f is the animate index supplied by FuncAnimation"""
         value_axs.cla()
         value_axs.set_title(f'State Values (iteration: {f})')
         value_axs.plot(self.state_values)
@@ -78,12 +75,12 @@ class Gamblers():
         policy_axs.set_title('Policy/Capital')
         policy_axs.plot(self.policy)
 
-    def iterate_4_3(self, f: "animate index"):
+    def iterate_4_3(self, f: int) -> None:
         """do an iteration of policy evaluations and policy improvement"""
         self.plot(f)
         self.cont = self.value_iteration()
 
-    def loop_until_convergence(self) -> int:
+    def loop_until_convergence(self) -> Iterator[int]:
         """loops over the policy until convergence is reached"""
         i = 0
         while self.cont:
