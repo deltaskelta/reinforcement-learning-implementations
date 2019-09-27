@@ -1,10 +1,12 @@
 """implementation of the Gamblers Problem using value iteration in Chapter 4"""
 
-from typing import Iterator
-from operator import add, sub
 from math import isclose
+from operator import add, sub
+from typing import Iterator
+
 import numpy as np  # type: ignore
-from matplotlib import animation, pyplot as plt  # type: ignore
+from matplotlib import animation  # type: ignore
+from matplotlib import pyplot as plt  # type: ignore
 
 GOAL = 101
 DIMS = 101
